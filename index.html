@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rolling Ball — Golden Run</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { overflow:hidden; background:#000; font-family:'Segoe UI',Arial,sans-serif; }
+    canvas { display:block; position:absolute; inset:0; }
+
+    /* ── HUD ── */
+    #hud {
+      position:absolute; top:20px; left:50%; transform:translateX(-50%);
+      text-align:center; pointer-events:none;
+    }
+    #dist {
+      font-size:44px; font-weight:900; letter-spacing:1px;
+      background:linear-gradient(180deg,#fff7d8 0%,#ffd86b 45%,#c98a1e 100%);
+      -webkit-background-clip:text; background-clip:text;
+      -webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 2px 10px rgba(255,190,60,.35));
+    }
+    #wid {
+      font-size:12px; color:rgba(255,240,210,.75); margin-top:2px;
+      letter-spacing:2px; text-transform:uppercase;
+      text-shadow:0 2px 8px rgba(0,0,0,.8);
+    }
+
+    #spd-wrap {
+      position:absolute; bottom:26px; left:26px; pointer-events:none;
+      color:rgba(255,235,200,.6); font-size:10px; letter-spacing:2px;
+      padding:12px 14px; border-radius:14px;
+      background:rgba(10,8,20,.42);
+      border:1px solid rgba(255,210,110,.18);
+      backdrop-filter:blur(8px);
+    }
+    #spd-wrap label { display:block; margin-bottom:6px; }
+    #spd-bg { width:130px; height:7px; background:rgba(255,255,255,.12); border-radius:4px; overflow:hidden; }
+    #spd-fill {
+      height:100%; width:0%; border-radius:4px;
+      background:linear-gradient(90deg,#ffe9a0,#ffb13d,#ff5040);
+      box-shadow:0 0 10px rgba(255,170,60,.7);
+      transition:width .22s ease;
+    }
+
+    #hint {
+      position:absolute; bottom:30px; left:50%; transform:translateX(-50%);
+      color:rgba(255,240,210,.4); font-size:12px; letter-spacing:1px; pointer-events:none;
+      text-shadow:0 2px 6px rgba(0,0,0,.7);
+    }
+    #hint kbd {
+      font-family:inherit; font-size:11px; padding:2px 7px; margin:0 2px;
+      border:1px solid rgba(255,220,140,.3); border-radius:6px;
+      background:rgba(255,255,255,.06);
+    }
+
+    /* ── Overlay ── */
+    #overlay {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      background:radial-gradient(ellipse at 50% 38%, rgba(40,24,8,.35), rgba(5,4,12,.78));
+      backdrop-filter:blur(7px) saturate(1.3);
+      opacity:1; transition:opacity .4s ease;
+    }
+    #overlay.hidden { opacity:0; pointer-events:none; }
+
+    .card {
+      text-align:center; color:#fff; padding:46px 64px;
+      background:linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.025));
+      border:1px solid rgba(255,210,120,.28);
+      border-radius:26px;
+      box-shadow:0 24px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.14);
+      animation:cardIn .55s cubic-bezier(.22,1,.36,1);
+    }
+    .card h1 {
+      font-size:58px; font-weight:900; letter-spacing:-1px; margin-bottom:8px;
+      background:linear-gradient(180deg,#fff7d8 0%,#ffd86b 48%,#b87714 100%);
+      -webkit-background-clip:text; background-clip:text;
+      -webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 3px 16px rgba(255,190,60,.3));
+      animation:slideDown .55s cubic-bezier(.22,1,.36,1);
+    }
+    .card .sub {
+      font-size:16px; color:rgba(255,242,220,.7); margin-bottom:32px;
+      animation:fadeUp .6s cubic-bezier(.22,1,.36,1) .08s both;
+    }
+    .card button {
+      font-size:17px; font-weight:600; padding:14px 48px;
+      background:linear-gradient(180deg,#ffd970,#e8a32b);
+      border:none; border-radius:14px; color:#3a2404; cursor:pointer;
+      box-shadow:0 6px 26px rgba(255,180,50,.35), inset 0 1px 0 rgba(255,255,255,.6);
+      animation:fadeUp .6s cubic-bezier(.22,1,.36,1) .16s both;
+      transition:transform .14s ease, box-shadow .18s ease, filter .18s ease;
+    }
+    .card button:hover {
+      transform:scale(1.05) translateY(-1px);
+      filter:brightness(1.07);
+      box-shadow:0 10px 38px rgba(255,190,60,.5), inset 0 1px 0 rgba(255,255,255,.6);
+    }
+    .card button:active { transform:scale(0.97); }
+
+    @keyframes cardIn {
+      from { transform:scale(.92) translateY(14px); opacity:0; }
+      to   { transform:scale(1)   translateY(0);    opacity:1; }
+    }
+    @keyframes slideDown {
+      from { transform:translateY(-26px); opacity:0; }
+      to   { transform:translateY(0);     opacity:1; }
+    }
+    @keyframes fadeUp {
+      from { transform:translateY(16px); opacity:0; }
+      to   { transform:translateY(0);    opacity:1; }
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="dist">0 m</div>
+  <div id="wid">Track width 100%</div>
+</div>
+<div id="spd-wrap">
+  <label>SPEED</label>
+  <div id="spd-bg"><div id="spd-fill"></div></div>
+</div>
+<div id="hint"><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> to steer · hold screen edges on touch</div>
+
+<div id="overlay">
+  <div class="card">
+    <h1>Rolling Ball</h1>
+    <div class="sub">Keep the golden ball on the narrowing, winding track</div>
+    <button id="btn">Press SPACE or click to start</button>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+// ── Renderer / scene ──────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding          = THREE.sRGBEncoding;
+renderer.toneMapping             = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure     = 1.12;
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.Fog(0xb06a3e, 45, 215);
+const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 1200);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Tuning (gameplay identical to original) ───────────────────────────────────
+const SEG_LEN    = 4;
+const INIT_W     = 9;
+const MIN_W      = 2.2;
+const BALL_R     = 0.95;
+const BASE_SPD   = 9;
+const MAX_SPD    = 28;
+const LAT_ACCEL  = 16;
+const LAT_DAMP   = 7;
+const MAX_LAT_V  = 8;
+const SEGS_AHEAD = 52;
+const CAM_BACK   = 6.0;
+const CAM_H      = 3.0;
+const THICK      = 0.5;
+// rest height: tiny lift so the sphere silhouette never sinks into the track
+const BALL_REST  = BALL_R + 0.05;
+
+function trackWidth(dist) {
+  const t = Math.min(dist / 500, 1);
+  return Math.max(MIN_W, INIT_W - (1 - Math.pow(1-t, 2.2)) * (INIT_W - MIN_W));
+}
+function gameSpeed(dist) {
+  return BASE_SPD + Math.min(dist/500, 1) * (MAX_SPD - BASE_SPD);
+}
+// Dark slate asphalt shifting to danger-red as the track narrows
+function trackRGB(dist) {
+  const t = Math.min(dist / 500, 1);
+  return [(58 + t*120)/255, (64 - t*26)/255, (86 - t*42)/255];
+}
+
+// ── Winding path ──────────────────────────────────────────────────────────────
+let pathX = [0, 0], pathAngle = 0;
+function resetPath() { pathX = [0, 0]; pathAngle = 0; }
+function getPathX(idx) {
+  const n = Math.max(0, idx);
+  while (pathX.length <= n + 1) {
+    const i   = pathX.length;
+    const amp = Math.min(0.055 + (i * SEG_LEN) / 1600, 0.24);
+    const old = pathAngle;
+    pathAngle += (Math.random() - 0.5) * amp * 2;
+    pathAngle *= 0.82;
+    // keep every bend steerable at the speed the ball will have here:
+    // 1) cap sharpness at 50% of max steering speed (rest is reaction margin)
+    const spd = gameSpeed(i * SEG_LEN);
+    const k   = spd / BASE_SPD;
+    const lim = MAX_LAT_V * Math.pow(k, 0.75) / spd * 0.50;
+    pathAngle = Math.max(-lim, Math.min(lim, pathAngle));
+    // 2) cap how fast the curve can CHANGE to a third of the ball's steering
+    //    acceleration — smooth arcs instead of untrackable zigzags
+    const slew = 0.35 * LAT_ACCEL * k * SEG_LEN / (spd * spd);
+    pathAngle = Math.max(old - slew, Math.min(old + slew, pathAngle));
+    pathX.push(pathX[i-1] + pathAngle * SEG_LEN);
+  }
+  return pathX[n];
+}
+
+// ── Environment cubemap (gives the gold its reflections) ─────────────────────
+// Drawn on canvases — works on every GPU/driver, unlike PMREM render targets.
+function buildEnvCubemap() {
+  const S = 128;
+  function face(draw) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    draw(cv.getContext('2d'));
+    return cv;
+  }
+  // side faces: warm horizon at bottom fading to dusk blue at top
+  function sideFace(extra) {
+    return face(g => {
+      const gr = g.createLinearGradient(0, 0, 0, S);
+      gr.addColorStop(0,   '#2c3a78');
+      gr.addColorStop(0.55,'#7a5a8a');
+      gr.addColorStop(0.78,'#ff9a3e');
+      gr.addColorStop(0.88,'#ffd27a');
+      gr.addColorStop(1,   '#3a2418');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+      // bright streak so curved gold gets a crisp highlight
+      g.fillStyle = 'rgba(255,255,255,.9)';
+      g.fillRect(S*0.2, S*0.30, S*0.6, S*0.05);
+      if (extra) extra(g);
+    });
+  }
+  const px = sideFace();
+  const nx = sideFace();
+  const pz = sideFace();
+  // sun on the -z face (ahead of the camera)
+  const nz = sideFace(g => {
+    const rg = g.createRadialGradient(S*0.68, S*0.72, 2, S*0.68, S*0.72, S*0.5);
+    rg.addColorStop(0, 'rgba(255,255,240,1)');
+    rg.addColorStop(0.18, 'rgba(255,220,130,.9)');
+    rg.addColorStop(1, 'rgba(255,160,60,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, S, S);
+  });
+  const py = face(g => {           // sky overhead
+    const gr = g.createLinearGradient(0, 0, 0, S);
+    gr.addColorStop(0, '#1a2452'); gr.addColorStop(1, '#34427e');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    g.fillStyle = 'rgba(255,250,230,.95)';
+    g.beginPath(); g.ellipse(S*0.5, S*0.5, S*0.30, S*0.12, 0.6, 0, Math.PI*2); g.fill();
+  });
+  const ny = face(g => {           // dark warm ground bounce
+    g.fillStyle = '#33201a'; g.fillRect(0, 0, S, S);
+  });
+  const tex = new THREE.CubeTexture([px, nx, py, ny, pz, nz]);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.needsUpdate = true;
+  return tex;
+}
+const envCube = buildEnvCubemap();
+
+// ── Sky dome ──────────────────────────────────────────────────────────────────
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(900, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    vertexShader: `varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      varying vec3 vDir;
+      void main(){
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 top = vec3(0.025,0.04,0.13);
+        vec3 mid = vec3(0.16,0.18,0.42);
+        vec3 hor = vec3(0.86,0.46,0.22);
+        vec3 col = mix(hor, mid, smoothstep(0.0,0.28,h));
+        col = mix(col, top, smoothstep(0.22,0.75,h));
+        col = mix(vec3(0.05,0.035,0.07), col, smoothstep(-0.08,0.015,h));
+        vec3 sun = normalize(vec3(0.45,0.13,-1.0));
+        float s = max(dot(d,sun),0.0);
+        col += vec3(1.0,0.82,0.5)*pow(s,900.0)*9.0;   // disc
+        col += vec3(1.0,0.55,0.22)*pow(s,14.0)*0.55;  // glow
+        col += vec3(0.9,0.4,0.15)*pow(s,3.0)*0.16;    // broad haze
+        gl_FragColor = vec4(col,1.0);
+      }`
+  })
+);
+sky.frustumCulled = false;
+scene.add(sky);
+
+// ── Lights ────────────────────────────────────────────────────────────────────
+scene.add(new THREE.HemisphereLight(0x7a86d0, 0x4a2a14, 0.55));
+const sunLight = new THREE.DirectionalLight(0xffd9a0, 1.1);
+scene.add(sunLight);
+scene.add(sunLight.target);
+const ballGlow = new THREE.PointLight(0xffc14d, 0.85, 14, 2);
+scene.add(ballGlow);
+
+// (no ground — the track floats above a void; the sky dome darkens below the
+// horizon, and crystal pillars rising from the depths sell the abyss)
+
+// ── Dynamic track geometry ────────────────────────────────────────────────────
+const MAXSEG = SEGS_AHEAD + 8;
+
+function makeDynamicMesh(vertsPerSeg, material, normal) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(MAXSEG * vertsPerSeg * 3);
+  const col = new Float32Array(MAXSEG * vertsPerSeg * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage));
+  if (normal) {
+    const nrm = new Float32Array(MAXSEG * vertsPerSeg * 3);
+    for (let i = 0; i < nrm.length; i += 3) { nrm[i]=normal[0]; nrm[i+1]=normal[1]; nrm[i+2]=normal[2]; }
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  }
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  return mesh;
+}
+
+const topMat   = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.72, metalness:0.05, side:THREE.DoubleSide });
+const sideMat  = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.9,  metalness:0.0,  side:THREE.DoubleSide });
+const glowMat  = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+
+const topMesh   = makeDynamicMesh(6,  topMat,  [0,1,0]);
+const sideMesh  = makeDynamicMesh(12, sideMat, [1,0,0]);
+const stripMesh = makeDynamicMesh(12, glowMat);
+const dashMesh  = makeDynamicMesh(6,  glowMat);
+
+// writes one quad (two triangles, 6 verts) into pos/col arrays at vertex offset o
+function quad(P, C, o, ax,ay,az, bx,by,bz, cx,cy,cz, dx,dy,dz, r,g,b) {
+  let p = o*3;
+  P[p++]=ax;P[p++]=ay;P[p++]=az; P[p++]=bx;P[p++]=by;P[p++]=bz; P[p++]=cx;P[p++]=cy;P[p++]=cz;
+  P[p++]=cx;P[p++]=cy;P[p++]=cz; P[p++]=bx;P[p++]=by;P[p++]=bz; P[p++]=dx;P[p++]=dy;P[p++]=dz;
+  let q = o*3;
+  for (let k = 0; k < 6; k++) { C[q++]=r; C[q++]=g; C[q++]=b; }
+  return o + 6;
+}
+
+function buildTrack(fwd, time) {
+  const si = Math.floor(fwd / SEG_LEN);
+  const tP = topMesh.geometry.attributes,   sP = sideMesh.geometry.attributes;
+  const gP = stripMesh.geometry.attributes, dP = dashMesh.geometry.attributes;
+  let to=0, so=0, go=0, do_=0;
+
+  // edge strips pulse toward red on the dangerous final stretch
+  const danger = Math.max(0, (Math.min(fwd/500,1) - 0.7) / 0.3);
+  const pulse  = danger * (Math.sin(time*9)*0.5 + 0.5);
+  const eR = 1.0, eG = 0.78 - pulse*0.55, eB = 0.27 - pulse*0.1;
+
+  for (let i = Math.max(0, si-2); i <= si + SEGS_AHEAD; i++) {
+    const d0  = i*SEG_LEN,        d1  = (i+1)*SEG_LEN;
+    const cx0 = getPathX(i),      cx1 = getPathX(i+1);
+    const hw0 = trackWidth(d0)/2, hw1 = trackWidth(d1)/2;
+    const z0  = -d0, z1 = -d1;
+
+    const shade = (i%2===0) ? 1 : 0.86;
+    const [r,g,b] = trackRGB(d0).map(v => v*shade);
+
+    to = quad(tP.position.array, tP.color.array, to,
+      cx0-hw0,0,z0, cx0+hw0,0,z0, cx1-hw1,0,z1, cx1+hw1,0,z1, r,g,b);
+
+    const dk = 0.38;
+    so = quad(sP.position.array, sP.color.array, so,
+      cx0-hw0,0,z0, cx0-hw0,-THICK,z0, cx1-hw1,0,z1, cx1-hw1,-THICK,z1, r*dk,g*dk,b*dk);
+    so = quad(sP.position.array, sP.color.array, so,
+      cx0+hw0,0,z0, cx0+hw0,-THICK,z0, cx1+hw1,0,z1, cx1+hw1,-THICK,z1, r*dk,g*dk,b*dk);
+
+    const EW = 0.24, ey = 0.02;
+    go = quad(gP.position.array, gP.color.array, go,
+      cx0-hw0,ey,z0, cx0-hw0+EW,ey,z0, cx1-hw1,ey,z1, cx1-hw1+EW,ey,z1, eR,eG,eB);
+    go = quad(gP.position.array, gP.color.array, go,
+      cx0+hw0-EW,ey,z0, cx0+hw0,ey,z0, cx1+hw1-EW,ey,z1, cx1+hw1,ey,z1, eR,eG,eB);
+
+    if (i % 3 < 2) {
+      const cw = 0.13;
+      do_ = quad(dP.position.array, dP.color.array, do_,
+        cx0-cw,0.02,z0, cx0+cw,0.02,z0, cx1-cw,0.02,z1, cx1+cw,0.02,z1, 0.95,0.88,0.68);
+    }
+  }
+
+  [[topMesh,to],[sideMesh,so],[stripMesh,go],[dashMesh,do_]].forEach(([m,n]) => {
+    m.geometry.attributes.position.needsUpdate = true;
+    m.geometry.attributes.color.needsUpdate    = true;
+    m.geometry.setDrawRange(0, n);
+  });
+}
+
+// ── The golden ball ───────────────────────────────────────────────────────────
+function goldTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const g = cv.getContext('2d');
+  const base = g.createLinearGradient(0,0,0,256);
+  base.addColorStop(0,'#f3c349'); base.addColorStop(.5,'#e8ae2e'); base.addColorStop(1,'#f3c349');
+  g.fillStyle = base; g.fillRect(0,0,512,256);
+  // engraved latitude bands so the roll reads clearly
+  for (let y = 14; y < 256; y += 42) {
+    g.fillStyle = 'rgba(110,66,8,.5)';  g.fillRect(0, y, 512, 9);
+    g.fillStyle = 'rgba(255,244,190,.55)'; g.fillRect(0, y+9, 512, 2.5);
+  }
+  // small embossed studs between bands
+  g.fillStyle = 'rgba(120,72,10,.35)';
+  for (let y = 35; y < 256; y += 42)
+    for (let x = 16; x < 512; x += 64) {
+      g.beginPath(); g.arc(x, y, 5, 0, Math.PI*2); g.fill();
+    }
+  const tx = new THREE.CanvasTexture(cv);
+  tx.encoding = THREE.sRGBEncoding;
+  tx.wrapS = THREE.RepeatWrapping;
+  return tx;
+}
+
+const goldMat = new THREE.MeshStandardMaterial({
+  map: goldTexture(),
+  color: 0xffffff,
+  metalness: 0.92,
+  roughness: 0.26,
+  envMap: envCube,
+  envMapIntensity: 2.0,
+  transparent: true   // fades out while falling into the void
+});
+const ballPivot = new THREE.Group();              // position + bank tilt
+const ballMesh  = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 48, 32), goldMat); // roll
+ballPivot.add(ballMesh);
+scene.add(ballPivot);
+
+// soft blob shadow under the ball
+function blobShadowTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const rg = g.createRadialGradient(64,64,4, 64,64,62);
+  rg.addColorStop(0,'rgba(0,0,0,.5)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle = rg; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(cv);
+}
+const shadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(BALL_R*2.6, BALL_R*2.6),
+  new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false })
+);
+shadow.rotation.x = -Math.PI/2;
+scene.add(shadow);
+
+// ── Gold arches the track threads through ─────────────────────────────────────
+const archMat = new THREE.MeshStandardMaterial({ color: 0xe8b13a, metalness: 0.9, roughness: 0.32, envMap: envCube, envMapIntensity: 1.6 });
+const ARCH_N = 3, ARCH_SP = 160;
+const arches = [];
+for (let k = 0; k < ARCH_N; k++) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(6.4, 0.32, 12, 40), archMat);
+  m.userData.d = 110 + k*ARCH_SP;
+  scene.add(m); arches.push(m);
+}
+
+// ── Crystal scenery on the plains below ───────────────────────────────────────
+function rnd(seed) { const s = Math.sin(seed*127.1)*43758.5453; return s - Math.floor(s); }
+const crysMat = new THREE.MeshStandardMaterial({ color: 0x342a55, roughness: 0.4, metalness: 0.3, flatShading: true, emissive: 0x191230 });
+const crysGeo = new THREE.ConeGeometry(1, 1, 5);
+const CRY_N = 32, CRY_SP = 16;
+const crystals = [];
+for (let k = 0; k < CRY_N; k++) {
+  const m = new THREE.Mesh(crysGeo, crysMat);
+  m.userData.d = k*CRY_SP;
+  scene.add(m); crystals.push(m);
+}
+function placeCrystal(m, gen) {
+  const d    = m.userData.d;
+  const seed = d*0.713 + gen*31.7;
+  const side = rnd(seed) > 0.5 ? 1 : -1;
+  const off  = 8 + rnd(seed+1)*16;
+  const h    = 10 + rnd(seed+2)*22;          // tall pillars rising from the void
+  m.scale.set(0.7 + rnd(seed+3)*1.4, h, 0.7 + rnd(seed+3)*1.4);
+  const tipY = -1.5 - rnd(seed+5)*4;          // tip just below track level
+  m.position.set(getPathX(Math.round(d/SEG_LEN)) + side*(trackWidth(d)/2 + off), tipY - h/2, -d);
+  m.rotation.y = rnd(seed+4)*Math.PI;
+}
+
+// ── Sparkle dust particles ────────────────────────────────────────────────────
+function sparkTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const rg = g.createRadialGradient(32,32,0, 32,32,30);
+  rg.addColorStop(0,'rgba(255,236,170,1)');
+  rg.addColorStop(.35,'rgba(255,200,90,.55)');
+  rg.addColorStop(1,'rgba(255,170,60,0)');
+  g.fillStyle = rg; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(cv);
+}
+const PART_N = 160;
+const partGeo = new THREE.BufferGeometry();
+const partPos = new Float32Array(PART_N*3);
+partGeo.setAttribute('position', new THREE.BufferAttribute(partPos, 3).setUsage(THREE.DynamicDrawUsage));
+const particles = new THREE.Points(partGeo, new THREE.PointsMaterial({
+  map: sparkTexture(), size: 0.38, transparent: true, opacity: 0.85,
+  blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+}));
+particles.frustumCulled = false;
+scene.add(particles);
+function spawnParticle(i, fwd) {
+  const d = fwd + 20 + Math.random()*180;
+  partPos[i*3]   = getPathX(Math.floor(d/SEG_LEN)) + (Math.random()-0.5)*30;
+  partPos[i*3+1] = -7 + Math.random()*16;   // some drift below the track (void depth)
+  partPos[i*3+2] = -d;
+}
+
+// ── Game state ────────────────────────────────────────────────────────────────
+const IDLE=0, PLAYING=1, DEAD=2;
+let state=IDLE, ballFwd=0, ballX=0, ballVelX=0, highScore=0, rollAngle=0;
+let camX=0, ballY=BALL_REST, fallV=0, sceneryGen=0, elapsed=0;
+const keys = {};
+
+document.addEventListener('keydown', e => {
+  if (e.code==='ArrowLeft'  || e.code==='KeyA') keys.left  = true;
+  if (e.code==='ArrowRight' || e.code==='KeyD') keys.right = true;
+  if (e.code==='Space') { e.preventDefault(); handleStart(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.code==='ArrowLeft'  || e.code==='KeyA') keys.left  = false;
+  if (e.code==='ArrowRight' || e.code==='KeyD') keys.right = false;
+});
+// touch / mouse steering: hold either half of the screen
+canvas.addEventListener('pointerdown', e => {
+  if (state !== PLAYING) return;
+  if (e.clientX < innerWidth/2) keys.left = true; else keys.right = true;
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev =>
+  canvas.addEventListener(ev, () => { keys.left = false; keys.right = false; }));
+
+function handleStart() { if (state===IDLE||state===DEAD) startGame(); }
+document.getElementById('btn').onclick = handleStart;
+
+function startGame() {
+  ballFwd=0; ballX=0; ballVelX=0; camX=0; rollAngle=0; ballY=BALL_REST; fallV=0;
+  resetPath();
+  getPathX(SEGS_AHEAD+6);
+  sceneryGen++;
+  crystals.forEach((m,k) => { m.userData.d = k*CRY_SP; placeCrystal(m, sceneryGen); });
+  arches.forEach((m,k)   => { m.userData.d = 110 + k*ARCH_SP; });
+  for (let i = 0; i < PART_N; i++) spawnParticle(i, 0);
+  document.getElementById('overlay').classList.add('hidden');
+  state = PLAYING;
+}
+
+function die() {
+  state = DEAD;
+  fallV = 0;
+  // push the ball outward so it visibly rolls over the edge instead of
+  // dropping through the track surface
+  const side = Math.sign(ballX - getPathX(Math.floor(ballFwd / SEG_LEN))) || 1;
+  ballVelX = side * Math.max(4.5, Math.abs(ballVelX));
+  const d = Math.floor(ballFwd);
+  if (d > highScore) highScore = d;
+  setTimeout(() => {
+    if (state !== DEAD) return;
+    const o = document.getElementById('overlay');
+    o.classList.remove('hidden');
+    o.innerHTML = `
+      <div class="card">
+        <h1>Fell off!</h1>
+        <div class="sub">${d} m &nbsp;·&nbsp; Best: ${highScore} m</div>
+        <button id="btn">Retry (Space)</button>
+      </div>`;
+    document.getElementById('btn').onclick = handleStart;
+  }, 650);
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+function update(dt) {
+  const spd = gameSpeed(ballFwd);
+  ballFwd   += spd * dt;
+  rollAngle += (spd / BALL_R) * dt;
+
+  // steering authority grows with speed — otherwise curves eventually shift
+  // sideways faster than the ball can possibly move, making death inevitable
+  const k     = spd / BASE_SPD;
+  const accel = LAT_ACCEL * k;
+  const maxV  = MAX_LAT_V * Math.pow(k, 0.75);
+  if (keys.left)  ballVelX -= accel * dt;
+  if (keys.right) ballVelX += accel * dt;
+  // friction only while coasting — steering shouldn't fight its own damping,
+  // otherwise sustained steering speed is capped far below maxV
+  if (!keys.left && !keys.right) ballVelX *= Math.exp(-LAT_DAMP * dt);
+  ballVelX  = Math.max(-maxV, Math.min(maxV, ballVelX));
+  ballX    += ballVelX * dt;
+
+  // interpolate the track centre to the ball's exact position so collision
+  // matches the rendered track (segment-start sampling caused unfair deaths
+  // on sharp curves)
+  const si = Math.floor(ballFwd / SEG_LEN);
+  const f  = ballFwd / SEG_LEN - si;
+  const cx = getPathX(si) * (1 - f) + getPathX(si + 1) * f;
+  // forgiving edge: the ball can hang over the side and only falls once its
+  // centre of mass actually crosses the track edge, like a real ball tipping
+  const hw = trackWidth(ballFwd) / 2;
+  if (Math.abs(ballX - cx) > hw) { die(); return; }
+
+  // camera follows the ball itself (lightly smoothed so it doesn't jitter)
+  camX += (ballX - camX) * Math.min(1, dt * 5);
+
+  const d   = Math.floor(ballFwd);
+  const wPc = Math.round((trackWidth(ballFwd) / INIT_W) * 100);
+  const sPc = Math.round(((spd-BASE_SPD)/(MAX_SPD-BASE_SPD))*100);
+  document.getElementById('dist').textContent = d + ' m';
+  const wid = document.getElementById('wid');
+  wid.textContent = 'Track width ' + wPc + '%';
+  wid.style.color = wPc < 35 ? 'rgba(255,120,100,.9)' : 'rgba(255,240,210,.75)';
+  document.getElementById('spd-fill').style.width = Math.max(0,sPc) + '%';
+}
+
+function updateDead(dt) {
+  if (ballY < -60) return;  // swallowed by the void — freeze the scene
+  // slide outward along the surface, then plunge into the void below
+  ballX    += ballVelX * dt;
+  ballFwd  += gameSpeed(ballFwd) * dt * 0.25;
+  rollAngle += Math.max(Math.abs(ballVelX) * 1.2, 1.5) * dt;
+  const si   = Math.floor(ballFwd / SEG_LEN);
+  const over = Math.abs(ballX - getPathX(si)) - trackWidth(si * SEG_LEN) / 2;
+  if (over > -BALL_R * 0.3 || ballY < BALL_REST) {  // tipped past the edge
+    fallV += 26 * dt;
+    ballY -= fallV * dt;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const fwd = ballFwd;
+
+  buildTrack(fwd, elapsed);
+
+  // ball
+  ballPivot.position.set(ballX, ballY, -fwd);
+  ballPivot.rotation.z = -ballVelX * 0.055;          // bank into the steer
+  ballMesh.rotation.x  = -rollAngle;                 // roll forward
+  // ball fades into the darkness as it falls into the void
+  const fade = Math.max(0, Math.min(1, (ballY + 26) / 22));
+  goldMat.opacity = fade;
+  ballGlow.intensity = 0.85 * fade;
+  ballMesh.visible = fade > 0;
+  // shadow only exists while the ball is over the track
+  shadow.position.set(ballX, 0.03, -fwd);
+  shadow.visible = ballY >= BALL_REST - 0.01;
+  ballGlow.position.set(ballX, ballY + 1.4, -fwd);
+
+  // camera
+  // dip slightly with a falling ball, but never sink toward the ground plane
+  const camDip = Math.max(-1.4, Math.min(0, ballY - BALL_R) * 0.25);
+  camera.position.set(camX, CAM_H + camDip, -(fwd - CAM_BACK));
+  // tilt down to keep a fallen ball in view
+  const lookY = 0.7 + Math.max(-1.7, Math.min(0, ballY - BALL_R) * 0.45);
+  camera.lookAt(camX, lookY, -(fwd + 15));
+  sky.position.copy(camera.position);
+
+  // sun light follows, lighting the ball from up-front-left
+  sunLight.position.set(camX + 28, 42, -(fwd + 55));
+  sunLight.target.position.set(ballX, 0, -fwd);
+
+  // recycle scenery
+  for (const m of crystals) {
+    if (m.userData.d < fwd - 24) { m.userData.d += CRY_N*CRY_SP; placeCrystal(m, sceneryGen); }
+  }
+  for (const m of arches) {
+    if (m.userData.d < fwd - 12) m.userData.d += ARCH_N*ARCH_SP;
+    const d = m.userData.d;
+    m.position.set(getPathX(Math.round(d/SEG_LEN)), 2.1, -d);
+  }
+
+  // recycle sparkles that fell behind the camera
+  for (let i = 0; i < PART_N; i++) {
+    if (partPos[i*3+2] > -(fwd - 8)) spawnParticle(i, fwd);
+  }
+  partGeo.attributes.position.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+let lastT = null;
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (!lastT) lastT = t;
+  const dt = Math.min((t-lastT)/1000, 0.05);
+  lastT = t;
+  elapsed += dt;
+  if (state===PLAYING) update(dt);
+  else if (state===DEAD) updateDead(dt);
+  render();
+}
+
+// idle scene: prime the path so the title screen shows the track
+getPathX(SEGS_AHEAD+6);
+crystals.forEach(m => placeCrystal(m, 0));
+for (let i = 0; i < PART_N; i++) spawnParticle(i, 0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
